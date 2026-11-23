@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from integrations.ros2.verify_telemetry import verify_records
 from integrations.ros2.supervisor_adapter import evaluate_recording
+from integrations.ros2.motion_evidence import audit_motion
 
 REQUIRED = ("px4_log_1", "px4_log_2", "px4_log_3", "rosbag_metadata")
 HASHED = REQUIRED + ("telemetry_jsonl",)
@@ -20,7 +21,7 @@ def sha256_file(path):
             digest.update(piece)
     return digest.hexdigest()
 
-def audit(manifest_path, minimum_samples=10):
+def audit(manifest_path, minimum_samples=10, require_motion=False):
     path = Path(manifest_path).resolve()
     folder = path.parent
     findings = []
@@ -76,6 +77,11 @@ def audit(manifest_path, minimum_samples=10):
             samples = verify_records(events, minimum_samples)
             checks["telemetry_contract"] = samples["passed"]
             findings.extend(samples["issues"])
+            if require_motion:
+                movement = audit_motion(events, minimum_samples=max(2, minimum_samples))
+                checks["motion_trial"] = movement["passed"]
+                if not movement["passed"]:
+                    findings.extend("motion: " + issue for issue in movement["issues"])
             if samples["passed"]:
                 baseline = evaluate_recording(events, start_advisory=True)
                 outage = evaluate_recording(events, start_advisory=True, end_gap_s=4)
@@ -107,10 +113,11 @@ def main():
     parser.add_argument("manifest")
     parser.add_argument("--minimum-samples", type=int, default=10)
     parser.add_argument("--report", default="artifacts/sitl/evidence-audit.json")
+    parser.add_argument("--require-motion", action="store_true", help="require per-UAV local displacement for a movement trial only")
     args = parser.parse_args()
     if args.minimum_samples < 1:
         parser.error("minimum samples must be >= 1")
-    result = audit(args.manifest, args.minimum_samples)
+    result = audit(args.manifest, args.minimum_samples, require_motion=args.require_motion)
     output = Path(args.report)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

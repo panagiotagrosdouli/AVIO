@@ -85,5 +85,13 @@ class EvidenceGateTests(unittest.TestCase):
             self.assertFalse(result["data_gate_passed"])
             self.assertTrue(any("escapes" in x for x in result["findings"]))
 
+    def test_motion_gate_is_optional_for_stationary_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = make_bundle(directory)
+            self.assertTrue(audit(manifest, minimum_samples=3)["data_gate_passed"])
+            result = audit(manifest, minimum_samples=3, require_motion=True)
+            self.assertFalse(result["data_gate_passed"])
+            self.assertFalse(result["checks"]["motion_trial"])
+
 if __name__ == "__main__":
     unittest.main()

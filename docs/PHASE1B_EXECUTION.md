@@ -27,14 +27,29 @@ python3 -m integrations.ros2.check_topics
 python3 -m integrations.ros2.observer --output artifacts/sitl/telemetry.jsonl
 ```
 
-Observe nonempty, increasing JSONL samples for all three identities. After collecting a session, run:\n\n```bash\npython3 -m integrations.ros2.verify_telemetry artifacts/sitl/telemetry.jsonl --minimum-samples 10\n```\n\nA passing JSONL contract check is not proof of physical motion or a stable PX4 flight; inspect the Gazebo scene and source logs as well. Use Ctrl+C to stop observer/launcher. Store logs and versions alongside `artifacts/sitl`; do not commit large logs or sensitive telemetry.
+Observe nonempty, increasing JSONL samples for all three identities. After collecting a session, run:
+
+```bash
+python3 -m integrations.ros2.verify_telemetry artifacts/sitl/telemetry.jsonl --minimum-samples 10
+```
+
+A passing JSONL contract check is not proof of physical motion or a stable PX4 flight; inspect the Gazebo scene and source logs as well.
+
+### Export the recorded Mission Control replay
+```bash
+python3 -m integrations.ros2.export_replay \
+  artifacts/sitl/telemetry.jsonl \
+  --out artifacts/sitl/replay.json --minimum-samples 10
+python3 -m http.server 8000
+```
+Open `http://localhost:8000/mission-control/sitl.html`. It displays three **separate per-vehicle local ENU traces**, with independent sample index and no inter-vehicle distance calculations. The browser cannot authenticate the source; keep the source logs and version manifests. The generated replay is read-only and **not live**. The original `mission-control/` view continues to display only the synthetic inspection mission. Use Ctrl+C to stop observer/launcher. Store logs and versions alongside `artifacts/sitl`; do not commit large logs or sensitive telemetry.
 
 ## Technical limitations
 - The observer is strictly read-only. No setpoints, arming, takeoff or mission control.
 - It reports each PX4 *local* frame: `NED → ENU` swaps/sign-flips position only. Local origins may differ; do not compute fleet distance from these coordinates until origins and clocks are aligned and independently validated.
 - The topic checker verifies graph topic presence/types, **not active telemetry delivery**; the observer log needs separate validation.
 - Starting three processes is not proof of running three PX4 instances, stable operation or correctly aligned frames.
-- The separate kinematic Mission Control does **not** yet ingest ROS 2 event streams.
+- The synthetic kinematic Mission Control remains separate; the offline PX4 replay view consumes converted JSON, not live ROS 2 streams. No common-origin or time alignment is asserted.
 
 ## Acceptance evidence needed
 1. Output of `python3 -m unittest discover -s tests -v` and `python3 -m integrations.ros2.check_topics`.

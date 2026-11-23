@@ -51,7 +51,7 @@ class TelemetryQualityTests(unittest.TestCase):
 
     def test_out_of_order_receipt_rejected(self):
         events = clean()
-        events[3], events[4] = events[4], events[3]
+        events[2], events[3] = events[3], events[2]
         self.assertFalse(audit_quality(events, 4, 1, 1)["passed"])
 
     def test_short_span_rejected(self):

@@ -40,7 +40,7 @@ python3 -m integrations.ros2.capture_manifest artifacts/sitl/session \
   --px4-dir "$HOME/PX4-Autopilot" \
   --px4-msgs-dir "$HOME/ros2_ws/src/px4_msgs" \
   --ros-distro "${ROS_DISTRO}" \
-  --gazebo-version "$(gz sim --versions 2>&1 | head -1)" \
+  --gazebo-version "$(gz sim --version 2>&1 | head -1)" \
   --agent-version "ENTER_INSTALLED_AGENT_VERSION"
 
 python3 -m integrations.ros2.evidence_gate \

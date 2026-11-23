@@ -1,0 +1,30 @@
+name: AVIO Python MVP checks
+on:
+  push:
+    branches: [main, feature/phase1-three-uav-mvp]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Generate and verify artifacts
+        run: |
+          python -m avio_mvp --out artifacts
+          python -m avio_mvp.benchmark --out artifacts/benchmark.json
+          python -m json.tool artifacts/latest.json > /dev/null
+          python -m json.tool artifacts/benchmark.json > /dev/null
+      - name: Upload synthetic artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-simulation-${{ matrix.python-version }}
+          path: artifacts/

@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AVIO — Live telemetry</title><style>
+:root{font:15px/1.5 system-ui;color:#e9f2ed;background:#101c1a}*{box-sizing:border-box}body{margin:0}
+main{max-width:1100px;margin:auto;padding:32px 20px}h1{font-size:clamp(34px,5vw,56px);letter-spacing:-.05em}
+p{color:#aec6bb}.kicker{font-size:12px;color:#9fe4ce;letter-spacing:.14em;text-transform:uppercase}
+.notice{border:1px solid #84744e;background:#27291e;border-radius:10px;padding:16px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.card{background:#1a2b27;border:1px solid #385046;border-radius:12px;padding:18px;min-width:0}
+.card h2{margin:0 0 8px}.status{padding:4px 10px;border-radius:20px;background:#3b463e;display:inline-block}
+.fresh{background:#164f3c;color:#b4efd6}.stale{background:#604523;color:#ffe0a4}
+svg{width:100%;display:block;background:#13221e;border-radius:8px;margin:14px 0}
+dl{display:grid;grid-template-columns:1fr 1fr;gap:4px}dt{color:#aec6bb}dd{margin:0;text-align:right}
+#summary{font-weight:600;color:#a8e0cb}small{color:#a8bfb5}@media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style></head><body><main><div class="kicker">AVIO / Mission Control / Local Bridge</div>
+<h1>Live fleet observer</h1><p>Near-real-time PX4/ROS 2 position events · local read-only monitoring</p>
+<div class="notice"><strong>Engineering limitation:</strong> Each UAV uses its own local ENU origin and auto-fitted plot. These traces are <strong>not a shared fleet map</strong>. Relative distances, collision risk and clock synchronization cannot be inferred. Recorded messages are not authenticated and no commands are available.</div>
+<p id="summary" role="status">Connecting…</p><div class="grid" id="cards"></div>
+<p><small>Local browser polling every 1 second. Default stale threshold: 3 seconds. Not a production telemetry or flight-safety service.</small></p></main>
+<script>
+(()=>{
+const names=['uav_1','uav_2','uav_3'],colors=['#9ee5cc','#f4ca88','#b8b4ff'],nodes={},history={},ns='http://www.w3.org/2000/svg';
+const root=document.getElementById('cards');
+function svg(tag,attrs){const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
+names.forEach((name,i)=>{
+ const card=document.createElement('section');card.className='card';
+ const heading=document.createElement('h2');heading.textContent=name+' · local ENU';
+ const status=document.createElement('span');status.className='status';status.textContent='MISSING';
+ const map=svg('svg',{viewBox:'0 0 300 225',role:'img','aria-label':name+' vehicle-local trajectory'});
+ const details=document.createElement('dl');card.append(heading,status,map,details);root.append(card);
+ nodes[name]={status,map,details,color:colors[i]};history[name]=[];
+});
+function render(name,result){
+ const node=nodes[name],s=result.state;
+ node.status.className='status '+s;node.status.textContent=s.toUpperCase();
+ const map=node.map;map.replaceChildren();
+ map.append(svg('rect',{x:10,y:10,width:280,height:205,stroke:'#39564b',fill:'#13221e'}));
+ node.details.replaceChildren();const event=result.sample;if(!event)return;
+ const p=event.position_m,track=history[name];
+ if(!track.length||track[track.length-1].stamp!==event.px4_timestamp_us){
+  track.push({x:p.x,y:p.y,stamp:event.px4_timestamp_us});if(track.length>120)track.shift();
+ }
+ const xs=track.map(x=>x.x),ys=track.map(x=>x.y),minX=Math.min(...xs),minY=Math.min(...ys);
+ const scale=180/Math.max(Math.max(...xs)-minX,Math.max(...ys)-minY,1);
+ const x=v=>50+(v-minX)*scale,y=v=>195-(v-minY)*scale;
+ map.append(svg('polyline',{points:track.map(q=>x(q.x)+','+y(q.y)).join(' '),fill:'none',stroke:node.color,'stroke-width':2}));
+ map.append(svg('circle',{cx:x(p.x),cy:y(p.y),r:6,fill:node.color}));
+ const label=svg('text',{x:18,y:28,fill:'#d0e1d9','font-size':11});label.textContent='AUTO-FIT · LOCAL METERS';map.append(label);
+ for(const [key,val] of [['East x',p.x.toFixed(2)],['North y',p.y.toFixed(2)],['Up z',p.z.toFixed(2)],['Sample age',result.age_s==null?'—':result.age_s.toFixed(1)+'s']]){
+  const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=val;node.details.append(dt,dd);
+ }
+}
+let busy=false;
+async function refresh(){
+ if(busy)return;busy=true;
+ try{
+  const response=await fetch('/api/snapshot',{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const data=await response.json();
+  if(data.mode!=='read_only_local_px4_observer'||data.fleet_aligned!==false)throw Error('Unexpected format');
+  for(const name of names)render(name,data.vehicles[name]);
+  document.getElementById('summary').textContent=data.status.toUpperCase()+' · '+names.map(n=>n+': '+data.vehicles[n].state).join(' · ');
+ }catch(err){
+  document.getElementById('summary').textContent='DISCONNECTED · '+err.message;
+  for(const name of names){nodes[name].status.className='status stale';nodes[name].status.textContent='DISCONNECTED'}
+ }finally{busy=false}
+}
+refresh();setInterval(refresh,1000);
+})();
+</script></body></html>

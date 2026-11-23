@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>AVIO Mission Control — PX4 Telemetry Replay</title>
+<style>
+:root{font:15px/1.5 system-ui,sans-serif;color:#e9f0ed;background:#101c1a}
+*{box-sizing:border-box}body{margin:0}main{max-width:1180px;padding:32px 20px;margin:auto}
+a{color:#a5e1ce}h1{font-size:clamp(30px,5vw,54px);letter-spacing:-.045em;margin:10px 0}
+h2{font-size:18px;margin:0 0 12px}.muted,small{color:#a9c0b6}
+.kicker{color:#a5e1ce;text-transform:uppercase;letter-spacing:.15em;font-size:12px}
+.warning{border:1px solid #8b9b82;background:#26312b;padding:15px;border-radius:10px;margin:20px 0}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.card{background:#1a2b27;border:1px solid #375046;border-radius:12px;padding:18px;min-width:0}
+svg{display:block;width:100%;height:auto;background:#13221e;border-radius:8px}
+strong.value{font-size:28px;display:block}
+label{display:block;margin-top:15px}input{width:100%;accent-color:#9ce0c9}
+#status{padding:12px 0;color:#ffd59f}button{background:#9ce0c9;color:#09221b;border:0;border-radius:6px;padding:10px 17px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}.actions{display:flex;align-items:center;gap:16px;margin:20px 0}
+code{color:#bdebcf}dl{display:grid;grid-template-columns:1fr 1fr;gap:4px}dt{color:#a9c0b6}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+footer{margin-top:24px;color:#9bafa6}
+@media(max-width:850px){.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<div class="kicker">AVIO / Mission Control / Replay</div>
+<h1>PX4 telemetry explorer</h1>
+<p class="muted">Recorded ROS 2 / PX4 position messages · read-only, offline visualization · <a href="./">Synthetic mission</a> · <a href="../index.html">AVIO</a></p>
+<div class="warning"><strong>Evidence boundary:</strong> Input records claim PX4/ROS 2 origin; the dashboard cannot authenticate them. Each UAV position uses its <em>own local ENU frame</em>. Charts are separated by vehicle. Slider index does <strong>not</strong> mean synchronized time. This is not a fleet map or safety dashboard. No flight commands, inspection findings, or collision clearances.</div>
+<div class="actions"><button id="step" disabled>Next sample</button><span id="indicator" class="muted">No replay loaded</span></div>
+<label for="scrub">Sample index (per vehicle, not synchronized)</label>
+<input id="scrub" aria-label="Replay sample index" type="range" min="0" max="0" value="0" disabled>
+<div id="status" role="status" aria-live="polite"></div>
+<div class="cards" id="cards"></div>
+<footer>Data source: <code>artifacts/sitl/replay.json</code>. Generate from real recorded JSONL with <code>python3 -m integrations.ros2.export_replay</code>. All distances are vehicle-local meters; no common-origin fusion.</footer>
+</main>
+<script>
+(async function(){
+ const status=document.getElementById('status'),cards=document.getElementById('cards'),
+       scrub=document.getElementById('scrub'),indicator=document.getElementById('indicator'),
+       step=document.getElementById('step'),NS='http://www.w3.org/2000/svg';
+ let data,idx=0;
+ try{
+   const response=await fetch('../artifacts/sitl/replay.json',{cache:'no-store'});
+   if(!response.ok)throw new Error('Replay artifact unavailable ('+response.status+')');
+   data=await response.json();
+   if(data.schema_version!=='1.0'||data.reference_frame!=='per_vehicle_local_ENU_not_fleet_aligned'
+      ||data.control!=='read_only_replay'||!data.evidence_check?.passed)
+      throw new Error('Incompatible replay format or failed evidence checks');
+   if(!Array.isArray(data.vehicles?.uav_1)||!Array.isArray(data.vehicles?.uav_2)||
+      !Array.isArray(data.vehicles?.uav_3))throw new Error('Three vehicle streams required');
+   if(['uav_1','uav_2','uav_3'].some(n=>data.vehicles[n].length===0))
+      throw new Error('Empty vehicle stream');
+ }catch(err){
+   status.textContent='No valid PX4 replay. First record telemetry, then run: python3 -m integrations.ros2.export_replay artifacts/sitl/telemetry.jsonl --out artifacts/sitl/replay.json. '+err.message;
+   return;
+ }
+ const names=['uav_1','uav_2','uav_3'],colors=['#a5e1ce','#f0c68c','#c0b7ff'];
+ const views={};
+ function make(tag,attrs={}){const e=document.createElementNS(NS,tag);
+   for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e}
+ names.forEach((name,i)=>{
+   const card=document.createElement('section');card.className='card';
+   const heading=document.createElement('h2');heading.textContent=name+' · local ENU';card.append(heading);
+   const chart=make('svg',{viewBox:'0 0 340 270',role:'img','aria-label':name+' local trajectory'});
+   const readout=document.createElement('dl');card.append(chart,readout);cards.append(card);
+   views[name]={chart,readout,color:colors[i]};
+ });
+ const max=Math.max(...names.map(n=>data.vehicles[n].length))-1;scrub.max=max;scrub.disabled=false;step.disabled=false;
+ function render(){
+   scrub.value=idx;indicator.textContent='Sample index '+(idx+1)+' / '+(max+1)+' (independent streams)';
+   names.forEach(name=>{
+     const stream=data.vehicles[name],sample=stream[Math.min(idx,stream.length-1)],
+           view=views[name],svg=view.chart;
+     const coords=stream.map(v=>v.position_m);
+     const xs=coords.map(p=>p.x),ys=coords.map(p=>p.y);
+     const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+     // Per-vehicle auto-fit only. No common reference frame or shared scale.
+     const extent=Math.max(maxX-minX,maxY-minY,1),scale=220/extent;
+     const toX=x=>60+(x-minX)*scale,toY=y=>245-(y-minY)*scale;
+     svg.replaceChildren();
+     svg.append(make('rect',{x:15,y:15,width:310,height:240,rx:5,fill:'#13221e',stroke:'#375046'}));
+     const path=make('polyline',{points:stream.slice(0,Math.min(idx,stream.length-1)+1)
+       .map(v=>toX(v.position_m.x)+','+toY(v.position_m.y)).join(' '),
+       stroke:view.color,'stroke-width':2,fill:'none'});
+     svg.append(path);
+     svg.append(make('circle',{cx:toX(sample.position_m.x),cy:toY(sample.position_m.y),r:6,fill:view.color}));
+     const label=make('text',{x:22,y:35,fill:'#c1d8ce','font-size':11});
+     label.textContent='AUTO-FIT · local x/y (m)';svg.append(label);
+     const fields=[['Samples',stream.length],['PX4 timestamp (µs)',sample.timestamp_us],
+       ['Local east x (m)',sample.position_m.x.toFixed(3)],
+       ['Local north y (m)',sample.position_m.y.toFixed(3)],
+       ['Local up z (m)',sample.position_m.z.toFixed(3)]];
+     view.readout.replaceChildren();
+     fields.forEach(([label,value])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');
+       dt.textContent=label;dd.textContent=String(value);view.readout.append(dt,dd)});
+   });
+ }
+ scrub.addEventListener('input',()=>{idx=Number(scrub.value);render()});
+ step.addEventListener('click',()=>{idx=(idx+1)%(max+1);render()});
+ status.textContent='Offline evidence contract passed · '+names.map(n=>n+': '+data.vehicles[n].length).join(' · ');
+ render();
+})();
+</script></body></html>

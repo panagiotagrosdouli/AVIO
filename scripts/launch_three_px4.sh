@@ -67,12 +67,12 @@ done
 echo "Start MicroXRCEAgent separately and run ROS 2 topic/telemetry checks."
 echo "Expected default PX4 ROS 2 topic prefixes: /uav_1 /uav_2 /uav_3"
 echo "Press Ctrl+C to terminate the three launched PX4 processes."
-# Bash wait may return nonzero from any crashed PX4 process; propagate failure.
-set +e
-wait
-result=$?
-set -e
+# Wait for each vehicle so failures cannot be hidden by a successful last child.
+result=0
+for pid in "${PIDS[@]}"; do
+  wait "$pid" || result=1
+done
 if (( result != 0 )); then
-  echo "A PX4 process exited abnormally; inspect SITL logs." >&2
+  echo "At least one PX4 instance exited abnormally; inspect SITL logs." >&2
 fi
 exit "$result"

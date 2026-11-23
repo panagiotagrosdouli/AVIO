@@ -27,7 +27,7 @@ python3 -m integrations.ros2.check_topics
 python3 -m integrations.ros2.observer --output artifacts/sitl/telemetry.jsonl
 ```
 
-Observe nonempty, increasing JSONL samples for all three identities. Use Ctrl+C to stop observer/launcher. Store logs and versions alongside `artifacts/sitl`; do not commit large logs or sensitive telemetry.
+Observe nonempty, increasing JSONL samples for all three identities. After collecting a session, run:\n\n```bash\npython3 -m integrations.ros2.verify_telemetry artifacts/sitl/telemetry.jsonl --minimum-samples 10\n```\n\nA passing JSONL contract check is not proof of physical motion or a stable PX4 flight; inspect the Gazebo scene and source logs as well. Use Ctrl+C to stop observer/launcher. Store logs and versions alongside `artifacts/sitl`; do not commit large logs or sensitive telemetry.
 
 ## Technical limitations
 - The observer is strictly read-only. No setpoints, arming, takeoff or mission control.

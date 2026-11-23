@@ -21,7 +21,7 @@ class LauncherPlanTests(unittest.TestCase):
         for i, pose in ((1, "0,0"), (2, "0,5"), (3, "0,10")):
             line = next(x for x in result.stdout.splitlines() if x.startswith(f"uav_{i}:"))
             self.assertIn(f"-i {i}", line)
-            self.assertIn(pose.replace(",", r"\,"), line)
+            self.assertIn(pose, line)
             self.assertIn(f"uav_{i}.log", line)
         self.assertEqual(result.stdout.count("PX4_GZ_STANDALONE=1"), 2)
 

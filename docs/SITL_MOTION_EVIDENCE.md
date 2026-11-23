@@ -21,6 +21,16 @@ python3 -m integrations.ros2.motion_evidence \
   --out artifacts/sitl/motion-evidence.json
 ```
 
+For a session that was explicitly designed to move all three vehicles, the existing evidence gate can additionally require local-motion evidence:
+
+```bash
+python3 -m integrations.ros2.evidence_gate \
+  artifacts/sitl/session/manifest.json \
+  --minimum-samples 10 --require-motion
+```
+
+Do not use `--require-motion` for a stationary hover or preflight-only session. It is an opt-in trial requirement, not a general safety criterion.
+
 These defaults are **illustrative thresholds**, not scientifically validated flight-performance acceptance criteria. Collect a stationary baseline to quantify estimator jitter and select displacement and deadband thresholds based on actual noise and task geometry. A stationary vehicle can be a correct result for a hover test, so the requirement that all three move applies only to the specific movement trial.
 
 The audit checks that each local track contains a sufficient number of records, covers a minimum reception-time span, has no excessive reception gaps, and has finite coordinates. It reports net first-to-last displacement and cumulative sampled step length excluding movements below the deadband. The measurements can include estimator drift; they are not independent ground truth.
